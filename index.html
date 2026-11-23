@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>التوقيع الإلكتروني</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap">
+<style>
+:root{--ink:#14213d;--mut:#5b6677;--bg:#eef1f5;--line:#d9dfe7;--acc:#1f3a8a;--ok:#14794a;--wait:#a96500}
+*{box-sizing:border-box}
+body{margin:0;font-family:Cairo,Tahoma,sans-serif;background:var(--bg);color:var(--ink);line-height:1.7}
+header{background:var(--ink);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
+header b{font-size:20px;font-weight:800}header a{color:#c9d3ea;font-size:14px;cursor:pointer}
+main{max-width:980px;margin:22px auto;padding:0 14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}
+h2{margin:0 0 12px;font-size:18px}
+input,button{font:inherit}
+input[type=text],input[type=password],input[type=file]{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:640px){.g{grid-template-columns:1fr}}
+.btn{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:10px 18px;cursor:pointer;font-weight:600;text-decoration:none;display:inline-block}
+.btn.s{background:#fff;color:var(--ink);border:1px solid var(--line);padding:6px 12px;font-size:14px}
+.btn.d{background:#fff;color:#a4262c;border:1px solid #e5c3c5;padding:6px 12px;font-size:14px}
+.btn:disabled{opacity:.5}
+:focus-visible{outline:3px solid #7aa2ff;outline-offset:2px}
+table{width:100%;border-collapse:collapse}td,th{padding:10px 8px;border-bottom:1px solid var(--line);text-align:right;vertical-align:middle}
+th{color:var(--mut);font-weight:600;font-size:14px}
+.tg{padding:2px 10px;border-radius:99px;font-size:13px;font-weight:600}.tg.p{background:#fff1d6;color:var(--wait)}.tg.o{background:#d9f3e6;color:var(--ok)}
+.acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.hint{color:var(--mut);font-size:14px;margin:6px 0 0}
+#pad{width:100%;max-width:600px;aspect-ratio:3/1;background:#fafbfd;border:2px dashed #9aa8c4;border-radius:10px;touch-action:none;display:block}
+.pg{position:relative;margin:0 auto 14px;width:fit-content;border:1px solid var(--line);background:#fff;cursor:crosshair}
+.pg canvas{display:block;max-width:100%}
+.pg img{position:absolute;transform:translate(-50%,-50%);pointer-events:none;outline:1px dashed var(--acc)}
+.bar{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 14px;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap}
+.done{text-align:center;padding:30px 10px}.done h2{color:var(--ok);font-size:22px}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+</head>
+<body>
+<header><b>التوقيع الإلكتروني</b><a id="out" hidden>خروج</a></header>
+<main id="app"></main>
+<script>
+// ===== الصق هنا رابط Apps Script (Web app URL) =====
+const API = 'PASTE_YOUR_APPS_SCRIPT_URL_HERE';
+// ====================================================
+const app=document.getElementById('app'),$=s=>document.getElementById(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=t=>t?new Date(+t).toLocaleString('ar-EG',{dateStyle:'short',timeStyle:'short'}):'';
+const api=async q=>{const r=await fetch(API,{method:'POST',body:JSON.stringify(q)});return r.json()};
+const toB64=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result.split(',')[1]);f.readAsDataURL(b)});
+const fromB64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const dlBlob=(blob,name)=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click()};
+let pw=sessionStorage.getItem('pw')||'';
+const S=new URLSearchParams(location.search).get('s');
+
+if(API.startsWith('PASTE'))app.innerHTML='<div class="card"><h2>الإعداد ناقص</h2><p>حط رابط Apps Script في المتغير API أول الملف.</p></div>';
+else if(S)signDoc(S);else admin();
+
+/* ---------- المسؤول ---------- */
+async function admin(){
+  if(!pw)return login();
+  $('out').hidden=false;$('out').onclick=()=>{sessionStorage.removeItem('pw');location.reload()};
+  app.innerHTML=`<div class="card"><h2>مستند جديد</h2><div class="g"><input type="text" id="t" placeholder="العنوان (مثال: مستخلص رقم 5)"><input type="text" id="n" placeholder="الرقم"></div>
+  <p><input type="file" id="f" accept="application/pdf"></p><button class="btn" id="b">رفع وإنشاء رابط التوقيع</button><p class="hint">PDF فقط. الأفضل يكون الملف أقل من 10 ميجا.</p></div>
+  <div class="card"><h2>المستندات</h2><div id="list"><p class="hint">جاري التحميل...</p></div></div>`;
+  $('b').onclick=async()=>{
+    const f=$('f').files[0],t=$('t').value.trim();if(!f||!t)return alert('اكتب العنوان واختار ملف PDF');
+    $('b').disabled=true;$('b').textContent='جاري الرفع...';
+    const r=await api({a:'create',pw,title:t,num:$('n').value.trim(),pdf:await toB64(f)}).catch(()=>({err:'net'}));
+    if(r.err){alert('الرفع فشل ('+r.err+')');$('b').disabled=false;$('b').textContent='رفع وإنشاء رابط التوقيع'}else admin();
+  };
+  const r=await api({a:'list',pw}).catch(()=>({err:'net'}));
+  if(r.err==='auth'){sessionStorage.removeItem('pw');pw='';return login('الباسورد غلط')}
+  if(r.err)return $('list').innerHTML='<p class="hint">مشكلة في الاتصال، حدّث الصفحة.</p>';
+  $('list').innerHTML=r.docs.length?`<div style="overflow-x:auto"><table><tr><th>المستند</th><th>الحالة</th><th>التاريخ</th><th></th></tr>`+r.docs.map(d=>{
+    const link=location.href.split('?')[0].split('#')[0]+'?s='+d.id;
+    return `<tr><td><b>${esc(d.title)}</b>${d.num?'<br><small>رقم '+esc(d.num)+'</small>':''}</td>
+    <td>${d.status==='signed'?'<span class="tg o">تم التوقيع</span><br><small>'+esc(d.signer)+'</small>':'<span class="tg p">في انتظار التوقيع</span>'}</td>
+    <td><small>${fmt(d.status==='signed'?d.signedAt:d.created)}</small></td>
+    <td><div class="acts">${d.status==='signed'?`<button class="btn" data-f="${d.id}" data-v="signed">النسخة الموقعة</button>`
+      :`<button class="btn s" data-l="${esc(link)}">نسخ الرابط</button><a class="btn s" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('برجاء مراجعة وتوقيع: '+d.title+'\n'+link)}">واتساب</a>`}
+      <button class="btn s" data-f="${d.id}" data-v="orig">الأصل</button><button class="btn d" data-x="${d.id}">حذف</button></div></td></tr>`}).join('')+'</table></div>'
+    :'<p class="hint">لسه مفيش مستندات.</p>';
+  document.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>navigator.clipboard.writeText(b.dataset.l).then(()=>b.textContent='تم النسخ',()=>prompt('انسخ الرابط:',b.dataset.l)));
+  document.querySelectorAll('[data-f]').forEach(b=>b.onclick=async()=>{
+    b.disabled=true;const x=await api({a:'file',pw,id:b.dataset.f,v:b.dataset.v});b.disabled=false;
+    if(x.pdf)dlBlob(new Blob([fromB64(x.pdf)],{type:'application/pdf'}),(b.dataset.v==='signed'?'signed-':'')+'document.pdf');else alert('الملف مش موجود');
+  });
+  document.querySelectorAll('[data-x]').forEach(b=>b.onclick=async()=>{if(confirm('حذف المستند نهائياً؟')){await api({a:'del',pw,id:b.dataset.x});admin()}});
+}
+function login(msg){
+  app.innerHTML=`<div class="card" style="max-width:380px;margin:60px auto"><h2>دخول</h2><input type="password" id="p" placeholder="الباسورد" autofocus>
+  ${msg?'<p style="color:#a4262c;margin:8px 0 0">'+msg+'</p>':''}<p><button class="btn" id="go">دخول</button></p></div>`;
+  const go=()=>{pw=$('p').value;sessionStorage.setItem('pw',pw);admin()};$('go').onclick=go;$('p').onkeydown=e=>{if(e.key==='Enter')go()};
+}
+
+/* ---------- المدير: التوقيع ---------- */
+async function signDoc(id){
+  app.innerHTML='<p class="hint">جاري تحميل المستند...</p>';
+  const r=await api({a:'get',id}).catch(()=>({err:'net'}));
+  if(r.err||!r.doc)return app.innerHTML=`<div class="card done"><h2 style="color:#a4262c">${r.err==='net'?'مشكلة في الاتصال':'الرابط غير صحيح'}</h2></div>`;
+  const d=r.doc;
+  if(d.status==='signed')return app.innerHTML=`<div class="card done"><h2>تم التوقيع</h2><p>${esc(d.title)}</p><p>وقّع: ${esc(d.signer)} — ${fmt(d.signedAt)}</p></div>`;
+  signUI(d.title+(d.num?' — رقم '+d.num:''),fromB64(d.pdf).buffer,async(blob,name)=>{
+    const x=await api({a:'sign',id,name,pdf:await toB64(blob)});
+    if(x.err)throw new Error(x.err==='already'?'المستند اتوقع قبل كده':'الحفظ فشل');
+    app.innerHTML=`<div class="card done"><h2>تم التوقيع</h2><p>${esc(d.title)}</p><p><button class="btn" id="dl">تحميل نسخة PDF</button></p></div>`;
+    $('dl').onclick=()=>dlBlob(blob,'signed-document.pdf');
+  });
+}
+
+/* ---------- واجهة التوقيع ---------- */
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+function signUI(title,bytes,finish){
+  app.innerHTML=`<div class="card"><h2>${esc(title)}</h2><p class="hint">راجع المستند، وقّع، واضغط على المكان اللي عايز الإمضاء يظهر فيه.</p></div>
+  <div class="card"><h2>إمضاؤك</h2><input type="text" id="nm" placeholder="الاسم (هيظهر تحت الإمضاء)" style="margin-bottom:10px">
+  <canvas id="pad" width="600" height="200"></canvas>
+  <div class="acts" style="margin-top:10px"><button class="btn s" id="clr">مسح</button><label>حجم الإمضاء <input type="range" id="sz" min="10" max="45" value="24"></label></div></div>
+  <div id="pages"><p class="hint">جاري تحميل المستند...</p></div>
+  <div class="bar"><span class="hint" id="st">ارسم الإمضاء ثم اضغط على المستند</span><button class="btn" id="go">اعتماد وتوقيع</button></div>`;
+  const pad=$('pad'),cx=pad.getContext('2d'),mark=new Image(),sz=$('sz'),st=$('st');
+  let pos=null,drawn=false,dn=false;
+  cx.lineWidth=4;cx.lineCap=cx.lineJoin='round';cx.strokeStyle='#0b2a5b';
+  const pt=e=>{const r=pad.getBoundingClientRect();return[(e.clientX-r.left)*pad.width/r.width,(e.clientY-r.top)*pad.height/r.height]};
+  const show=()=>{if(!pos)return;document.querySelectorAll('.pg')[pos.p].appendChild(mark);mark.src=pad.toDataURL();mark.style.left=pos.x*100+'%';mark.style.top=pos.y*100+'%';mark.style.width=sz.value+'%'};
+  pad.onpointerdown=e=>{dn=drawn=true;cx.beginPath();cx.moveTo(...pt(e));pad.setPointerCapture(e.pointerId)};
+  pad.onpointermove=e=>{if(dn){cx.lineTo(...pt(e));cx.stroke()}};
+  pad.onpointerup=()=>{dn=false;show()};sz.oninput=show;
+  $('clr').onclick=()=>{cx.clearRect(0,0,600,200);drawn=false;mark.remove();pos=null};
+  (async()=>{
+    const box=$('pages'),pdf=await pdfjsLib.getDocument({data:bytes.slice(0)}).promise;box.innerHTML='';
+    for(let i=1;i<=pdf.numPages;i++){
+      const pg=await pdf.getPage(i),v0=pg.getViewport({scale:1}),w=Math.min(box.clientWidth,820),v=pg.getViewport({scale:w/v0.width*2});
+      const d=document.createElement('div'),c=document.createElement('canvas');
+      d.className='pg';c.width=v.width;c.height=v.height;c.style.width=w+'px';d.appendChild(c);box.appendChild(d);
+      await pg.render({canvasContext:c.getContext('2d'),viewport:v}).promise;
+      d.onclick=ev=>{if(!drawn)return alert('ارسم الإمضاء الأول');const r=d.getBoundingClientRect();
+        pos={p:i-1,x:(ev.clientX-r.left)/r.width,y:(ev.clientY-r.top)/r.height};show();st.textContent='تمام، ممكن تغيّر المكان بضغطة تانية'};
+    }
+  })();
+  const go=$('go');
+  go.onclick=async()=>{
+    const name=$('nm').value.trim();
+    if(!name||!drawn||!pos)return alert('اكتب الاسم، ارسم الإمضاء، واضغط على مكانه في المستند');
+    go.disabled=true;st.textContent='جاري الحفظ...';
+    try{
+      await document.fonts.load('bold 26px Cairo');
+      const k=document.createElement('canvas');k.width=600;k.height=270;const x=k.getContext('2d');
+      x.drawImage(pad,0,0);x.fillStyle='#0b2a5b';x.textAlign='center';x.direction='rtl';
+      x.font='bold 26px Cairo,Tahoma,sans-serif';x.fillText(name,300,232);
+      const n=new Date(),p=v=>String(v).padStart(2,'0');x.font='20px Cairo,Tahoma,sans-serif';
+      x.fillText(p(n.getDate())+'/'+p(n.getMonth()+1)+'/'+n.getFullYear()+'  '+p(n.getHours())+':'+p(n.getMinutes()),300,260);
+      const d=await PDFLib.PDFDocument.load(bytes),img=await d.embedPng(k.toDataURL('image/png'));
+      const pg=d.getPages()[pos.p],{width:W,height:H}=pg.getSize(),w=sz.value/100*W,h=w*270/600;
+      pg.drawImage(img,{x:pos.x*W-w/2,y:H-pos.y*H-h/2,width:w,height:h});
+      await finish(new Blob([await d.save()],{type:'application/pdf'}),name);
+    }catch(e){alert('حصلت مشكلة: '+(e&&e.message||'حاول تاني'));go.disabled=false;st.textContent=''}
+  };
+}
+</script>
+</body>
+</html>
